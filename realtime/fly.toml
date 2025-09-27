@@ -1,4 +1,4 @@
-app = "your-rt-app"         # <-- change to your Fly app name
+app = "collab-app"         # <-- change to your Fly app name
 primary_region = "iad"
 
 [build]
