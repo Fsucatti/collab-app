@@ -1,0 +1,27 @@
+app = "your-rt-app"         # <-- change to your Fly app name
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3001"
+  # tighten CORS at runtime with these:
+  # PROD_APP_ORIGIN is your Vercel app origin (no trailing slash)
+  # ALLOW_LOCALHOST should be false in prod
+  PROD_APP_ORIGIN = "https://your-vercel-app.vercel.app"
+  ALLOW_LOCALHOST = "false"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[http_service.checks]]
+  interval = "10s"
+  timeout = "2s"
+  method = "GET"
+  path = "/health"

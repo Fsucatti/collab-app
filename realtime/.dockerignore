@@ -1,0 +1,11 @@
+# Ignore everything by default
+**
+
+# Allow only what's needed
+!package.json
+!pnpm-lock.yaml
+!tsconfig.json
+!src/**
+!Dockerfile
+!fly.toml
+!README.md
