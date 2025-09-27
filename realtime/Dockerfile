@@ -1,31 +1,30 @@
-# syntax=docker/dockerfile:1
+# syntax = docker/dockerfile:1
 
-FROM node:20-alpine AS base
+# ---- deps: install node_modules with pnpm ----
+FROM node:20-alpine AS deps
 WORKDIR /app
-ENV PNPM_HOME=/usr/local/share/pnpm
-ENV PATH=$PNPM_HOME:$PATH
-RUN corepack enable
-
-# ── deps ───────────────────────────────────────────────────────────────────────
-FROM base AS deps
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# ── build ──────────────────────────────────────────────────────────────────────
+# ---- build: compile TypeScript -> dist ----
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 COPY --from=deps /app/node_modules ./node_modules
+COPY package.json pnpm-lock.yaml ./
 COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm build
 
-# ── runtime ────────────────────────────────────────────────────────────────────
+# ---- run: minimal runtime image ----
 FROM node:20-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
+# app files
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
 EXPOSE 8080
 CMD ["node", "dist/index.js"]
