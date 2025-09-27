@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/* ---- Tailwind v4 tokens (LIGHT) ---- */
+:root {
+  /* Surfaces / text */
+  --color-app:    #f6f8ff;  /* was #ffffff → soft blue canvas */
+  --color-card:   #ffffff;  /* keep cards white */
+  --color-fg:     #0f172a;  /* slate-900 */
+  --color-muted:  #6b7280;  /* slate-500 */
+  --color-border: #e5e7eb;  /* gray-200 */
+  --color-ring:   #93c5fd;  /* blue-300 */
+
+  /* Brand – Deep Blue (unchanged) */
+  --color-brand-50:  #f1f5ff;
+  --color-brand-100: #e6efff;
+  --color-brand-200: #c7ddff;
+  --color-brand-300: #a9c9ff;
+  --color-brand-400: #7ca8ff;
+  --color-brand-500: #4c86ff;
+  --color-brand-600: #2d6df5; /* default */
+  --color-brand-700: #1e54d6;
+  --color-brand-800: #1b3fa3;
+  --color-brand-900: #162e75;
+  --color-brand-950: #0e1f4d;
+
+  /* Accent – Amber/Yellow (unchanged) */
+  --color-accent-50:  #fff9e5;
+  --color-accent-100: #fff2bf;
+  --color-accent-200: #ffe38a;
+  --color-accent-300: #ffd352;
+  --color-accent-400: #ffbf1a;
+  --color-accent-500: #f0ab00; /* default */
+  --color-accent-600: #d79000;
+  --color-accent-700: #b87400;
+  --color-accent-800: #915a00;
+  --color-accent-900: #734600;
+
+  --color-success:  #16a34a;
+  --color-warning:  var(--color-accent-500);
+  --color-danger:   #ef4444;
+
+  --radius-sm: 0.375rem;
+  --radius:    0.75rem;
+  --radius-lg: 1rem;
+}
+
+/* ---- Dark mode overrides ---- */
+.dark {
+  /* Dark mode overrides */
+  --color-app:    #0b1220;
+  --color-card:   #0f162a;
+  --color-fg:     #e5e7eb;  /* gray-200 */
+  --color-muted:  #9ca3af;  /* gray-400 */
+  --color-border: #1f2937;  /* gray-800 */
+  --color-ring:   #60a5fa;  /* blue-400 */
+
+  --color-brand-600: #2a63e8;
+  --color-brand-700: #234fc4;
+  --color-brand-800: #1e3f9c;
+
+  --color-accent-500: #e3a400;
+  --color-accent-600: #c98e00;
+}
+
+/* Help browsers choose color scheme */
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+
+/* TipTap comment highlight (uses your amber accent) */
+@layer components {
+  .pm-comment-highlight {
+    background-color: color-mix(in oklab, var(--color-accent-300) 60%, transparent);
+    outline: 2px solid var(--color-accent-600);
+    box-shadow: inset 0 -2px 0 0 var(--color-accent-600);
+    border-radius: 2px;
+    pointer-events: none;
+    transition: background-color .15s ease;
+  }
+
+  .dark .pm-comment-highlight {
+    background-color: color-mix(in oklab, var(--color-accent-600) 25%, transparent);
+    outline-color: var(--color-accent-500);
+    box-shadow: inset 0 -2px 0 0 var(--color-accent-500);
+  }
+
+  .pm-peer-selection {
+    background: var(--peer-color, color-mix(in oklab, var(--color-brand-300) 35%, transparent));
+    border-radius: 2px;
+    transition: background-color .15s ease;
+  }
+}
+
+@layer utilities {
+  /* Surface & text (map to your HEX variables) */
+  .bg-app        { background-color: var(--color-app); }
+  .bg-card       { background-color: var(--color-card); }
+  .text-fg       { color: var(--color-fg); }
+  .text-muted    { color: var(--color-muted); }
+  .border-border { border-color: var(--color-border); }
+  .ring-brand    { --tw-ring-color: var(--color-ring); }
+
+  /* Brand & accent helpers */
+  .bg-brand-50   { background-color: var(--color-brand-50); }
+  .bg-brand-100  { background-color: var(--color-brand-100); }
+  .bg-brand-200  { background-color: var(--color-brand-200); }
+  .bg-brand-300  { background-color: var(--color-brand-300); }
+  .bg-brand-400  { background-color: var(--color-brand-400); }
+  .bg-brand-500  { background-color: var(--color-brand-500); }
+  .bg-brand-600  { background-color: var(--color-brand-600); }
+  .bg-brand-700  { background-color: var(--color-brand-700); }
+  .bg-brand-800  { background-color: var(--color-brand-800); }
+  .bg-brand-900  { background-color: var(--color-brand-900); }
+
+  .bg-accent-500 { background-color: var(--color-accent-500); }
+  .bg-accent-600 { background-color: var(--color-accent-600); }
+  .text-danger   { color: var(--color-danger); }
+
+  /* Translucent surface helpers (for blur headers, etc.) */
+  .bg-card-70 { background-color: color-mix(in oklab, var(--color-card) 70%, transparent); }
+  .bg-card-60 { background-color: color-mix(in oklab, var(--color-card) 60%, transparent); }
+
+  /* Misc */
+  .writing-vertical-rl { writing-mode: vertical-rl; }
+}

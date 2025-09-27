@@ -1,0 +1,11 @@
+
+.ProseMirror { white-space: pre-wrap !important; overflow-wrap: anywhere !important; }
+
+/* Force comment highlight visibility in the editor */
+.ProseMirror .pm-comment-highlight {
+  background-color: rgba(253, 224, 71, 0.60) !important; /* amber-300 */
+  outline: 2px solid rgba(245, 158, 11, 0.9) !important; /* amber-400 */
+  box-shadow: inset 0 -2px 0 rgba(245, 158, 11, 0.9) !important;
+  border-radius: 2px;
+}
+
