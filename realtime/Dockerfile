@@ -1,30 +1,31 @@
 # syntax=docker/dockerfile:1
 
-# Base image with corepack (pnpm)
 FROM node:20-alpine AS base
 WORKDIR /app
+ENV PNPM_HOME=/usr/local/share/pnpm
+ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
 
-# Install deps (dev+prod)
+# ─── deps ─────────────────────────────────────────────────────────────────────
 FROM base AS deps
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Build TypeScript -> dist/
+# ─── build ────────────────────────────────────────────────────────────────────
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm build
 
-# Runtime image (prod only; reuse node_modules for simplicity)
+# ─── runtime ──────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS run
 WORKDIR /app
-ENV NODE_ENV=production \
-    PORT=3001
-# If you want only production deps, swap the next two COPY lines for a pnpm --prod install.
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json ./
+ENV NODE_ENV=production
+# The app reads PORT; Fly sends traffic to this port
+ENV PORT=8080
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-EXPOSE 3001
-CMD ["node","dist/index.js"]
+
+EXPOSE 8080
+CMD ["node", "dist/index.js"]
