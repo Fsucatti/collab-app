@@ -6,8 +6,8 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
-  title: "Your App",
-  description: "Real-time docs",
+  title: "Collab Notes",
+  description: "A collaborative document editor with real-time editing, comments, and revision history.",
 };
 
 const setInitialTheme = `
@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {setInitialTheme}
         </Script>
       </head>
-      <body className="bg-app text-fg">
+      <body className="bg-app text-fg min-h-screen">
         <Providers>
           <Navbar />
           <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
