@@ -49,12 +49,14 @@ const corsOriginFn: cors.CorsOptions["origin"] = (origin, cb) => {
   cb(new Error(`CORS blocked for origin: ${origin}`));
 };
 
+// Production must never fall back to a known value: anyone could forge tokens with it.
+if (!process.env.REALTIME_HMAC_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("REALTIME_HMAC_SECRET is required in production");
+}
 const REALTIME_HMAC_SECRET = process.env.REALTIME_HMAC_SECRET || "dev-secret-change-me";
 const MAX_DOC_HTML_CHARS = Number(process.env.MAX_DOC_HTML_CHARS ?? 400_000);
 
-// Authenticated users can patch a little faster than anonymous
-const RATE_AUTHED_MS = 50;
-const RATE_ANON_MS = 220;
+const PATCH_RATE_LIMIT_MS = 50;
 
 // ───────────────────────── infra ──────────────────────────
 const app = express();
@@ -75,6 +77,7 @@ type Claims = {
   role?: "view" | "edit";
   docId?: string | null;
   exp?: number;
+  scope?: string;
 };
 
 function verifyToken(token?: string): Claims | null {
@@ -86,13 +89,15 @@ function verifyToken(token?: string): Claims | null {
     .createHmac("sha256", REALTIME_HMAC_SECRET)
     .update(body)
     .digest("base64url");
-  if (expected !== sig) return null;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(sig);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
 
   try {
     const payload = JSON.parse(
       Buffer.from(body.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
     );
-    if (typeof payload.exp === "number" && Date.now() > payload.exp) return null;
+    if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
     return payload as Claims;
   } catch {
     return null;
@@ -129,28 +134,32 @@ function broadcastPresence(roomId: string) {
 }
 
 // ───────────────────────── sockets ────────────────────────
+// Every connection needs a token issued by the app for one specific document.
+// The app checks document permissions before signing it.
+io.use((socket, next) => {
+  const raw = (socket.handshake.auth as any)?.token;
+  const claims = verifyToken(typeof raw === "string" ? raw : undefined);
+  if (!claims || claims.scope !== "realtime" || !claims.docId) {
+    return next(new Error("unauthorized"));
+  }
+  socket.data.claims = claims;
+  next();
+});
+
 io.on("connection", (socket) => {
   let currentRoomId: string | null = null;
 
-  const rawToken =
-    (socket.handshake.auth && (socket.handshake.auth as any).token) ||
-    (socket.handshake.query as any)?.token;
-  const claims = verifyToken(typeof rawToken === "string" ? rawToken : undefined);
-  const isAuthed = !!claims;
+  const claims = socket.data.claims as Claims;
+  const role: "view" | "edit" = claims.role === "edit" ? "edit" : "view";
+  const tokenDocId = claims.docId as string;
 
-  const role: "view" | "edit" = claims?.role === "edit" ? "edit" : "view";
-  const tokenDocId: string | null = claims?.docId ?? null;
-
-  const userId = isAuthed
-    ? `u-${claims!.sub}`
-    : (socket.handshake.query.userId as string) || `anon-${socket.id.slice(0, 6)}`;
-  const name = claims?.name || (socket.handshake.query.name as string) || `Viewer-${userId.slice(-4)}`;
+  const userId = `u-${claims.sub}`;
+  const name = claims.name || `Viewer-${userId.slice(-4)}`;
   const color = colorFor(userId);
-  const PATCH_RATE_LIMIT_MS = isAuthed ? RATE_AUTHED_MS : RATE_ANON_MS;
 
   function joinDoc(docId: string) {
     const newRoom = roomIdFor(docId);
-    if (tokenDocId && tokenDocId !== docId) return;
+    if (tokenDocId !== docId) return;
     if (currentRoomId && currentRoomId !== newRoom) {
       socket.leave(currentRoomId);
       const old = docs.get(currentRoomId);
@@ -170,8 +179,6 @@ io.on("connection", (socket) => {
   socket.on("doc:patch", (patch: { content: string }) => {
     if (!currentRoomId) return;
     if (role !== "edit") return;
-    const joinedDocId = currentRoomId.replace(/^doc:/, "");
-    if (tokenDocId && tokenDocId !== joinedDocId) return;
 
     const state = docs.get(currentRoomId);
     if (!state) return;
@@ -191,25 +198,27 @@ io.on("connection", (socket) => {
     socket.to(currentRoomId).emit("doc:update", clean);
   });
 
+  // Read-only viewers can watch, but nothing they send reaches other people.
   socket.on("cursor", (data: { from: number; to: number }) => {
-    if (!currentRoomId) return;
+    if (!currentRoomId || role !== "edit") return;
     socket.to(currentRoomId).emit("cursor", { userId, name, color, from: data.from, to: data.to });
   });
 
   socket.on("comment:new", (payload: { docId: string; comment: any }) => {
-    if (!currentRoomId) return;
+    if (!currentRoomId || role !== "edit") return;
     socket.to(currentRoomId).emit("comment:new", payload.comment);
   });
   socket.on("comment:delete", (payload: { id: string }) => {
-    if (!currentRoomId) return;
+    if (!currentRoomId || role !== "edit") return;
     socket.to(currentRoomId).emit("comment:delete", payload);
   });
   socket.on("comment:resolve", (payload: { id: string; resolved: boolean; resolvedAt?: string; resolvedBy?: string }) => {
-    if (!currentRoomId) return;
+    if (!currentRoomId || role !== "edit") return;
     socket.to(currentRoomId).emit("comment:resolve", payload);
   });
 
   socket.on("disconnect", () => {
+    lastPatchAt.delete(socket.id);
     if (!currentRoomId) return;
     const s = docs.get(currentRoomId);
     s?.users.delete(userId);

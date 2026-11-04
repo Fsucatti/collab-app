@@ -1,18 +1,19 @@
 // app/api/trash/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DocListQuery } from "@/lib/validation";
 import { Prisma } from "@prisma/client";
-import { Visibility } from "@prisma/client";
-import { sanitizeDocHTML, sanitizePlainText } from "@/lib/sanitize";
-import { CreateDocBody } from "@/lib/validation";
+import { getCurrentUser } from "@/lib/permissions";
 
 export async function GET(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const url = new URL(req.url);
   const p = Math.max(1, Number(url.searchParams.get("page") ?? 1));
   const ps = Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
 
   const where: Prisma.DocumentWhereInput = {
+    ownerId: user.id,
     deletedAt: { not: null }, // trashed only
   };
 

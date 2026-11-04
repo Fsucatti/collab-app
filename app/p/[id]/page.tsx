@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { getRealtimeToken } from "@/lib/api";
 
 const RichEditor = dynamic(() => import("@/components/Editor"), { ssr: false });
 
@@ -48,7 +49,12 @@ export default function PublicDocPage() {
     const REALTIME_URL = process.env.NEXT_PUBLIC_REALTIME_URL || "http://localhost:3001";
     const socket = io(REALTIME_URL, {
       transports: ["websocket"],
-      query: { userId: `pub-${Math.random().toString(36).slice(2,8)}`, name: "Viewer" },
+      // Requested on every connection, so reconnecting never reuses an expired token.
+      auth: (cb) => {
+        getRealtimeToken(docId, "view")
+          .then((token) => cb(token ? { token } : {}))
+          .catch(() => cb({}));
+      },
     });
     socketRef.current = socket;
 

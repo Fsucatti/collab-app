@@ -1,8 +1,9 @@
 // app/docs/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import PresenceBar from "@/components/PresenceBar";
@@ -10,11 +11,35 @@ import CommentsSidebar from "@/components/CommentsSidebar";
 import RevisionsPanel from "@/components/RevisionsPanel";
 import ToastContainer, { toast } from "@/components/Toast";
 import VisibilityPicker from "@/components/VisibilityPicker";
+import CommentDialog from "@/components/CommentDialog";
 
 import { useDocumentSocket } from "@/hooks/useDocumentSocket";
 import { getDoc, patchDocMeta, createDoc, deleteDoc } from "@/lib/api";
 
 const RichEditor = dynamic(() => import("@/components/Editor"), { ssr: false });
+
+/** Clipboard API first, then the older copy command for contexts that block it. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      area.remove();
+    }
+  }
+}
 
 export default function DocPage() {
   // ───────────────────────────── routing / ids ─────────────────────────────
@@ -34,6 +59,11 @@ export default function DocPage() {
 
   // ─────────────────────────── realtime/doc state ──────────────────────────
   const {
+    loadState,
+    docMeta,
+    commentDraft,
+    submitComment,
+    cancelComment,
     initialHTML,
     peers,
     comments,
@@ -66,43 +96,35 @@ export default function DocPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const isOwner = !!docMeta?.isOwner;
+  const canEdit = !!docMeta?.canEdit;
+  const canComment = !!docMeta?.canComment;
+
   // ─────────────────────────────── load meta ───────────────────────────────
+  const savedTitleRef = useRef<string>("");
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const doc = await getDoc(docId);
-        if (!doc || cancelled) return;
-        setTitle(doc.title ?? "");
-        setVisibility((doc.visibility ?? "private") as any);
-      } catch { /* ignore */ }
-    })();
-    return () => { cancelled = true; };
-  }, [docId]);
+    if (!docMeta) return;
+    savedTitleRef.current = docMeta.title;
+    setTitle(docMeta.title);
+    setVisibility(docMeta.visibility);
+  }, [docMeta]);
 
   // ─────────────────────────── save title (debounced) ──────────────────────
   useEffect(() => {
-    if (!title) return;
+    if (!isOwner || !title || title === savedTitleRef.current) return;
     const t = setTimeout(async () => {
       try {
         setSavingMeta("title");
         await patchDocMeta(docId, { title });
+        savedTitleRef.current = title;
+      } catch {
+        toast("Couldn’t save the title");
       } finally {
         setSavingMeta(false);
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [docId, title]);
-
-  // Keep visibility in sync if it changes outside this page
-  useEffect(() => {
-    (async () => {
-      const res = await fetch(`/api/docs/${docId}`);
-      if (!res.ok) return;
-      const d = await res.json();
-      if (d.visibility) setVisibility(d.visibility);
-    })();
-  }, [docId]);
+  }, [docId, title, isOwner]);
 
   // ────────────────────────────── handlers ─────────────────────────────────
   async function handleChangeVisibility(v: "private" | "team" | "public") {
@@ -120,10 +142,9 @@ export default function DocPage() {
   }
 
   async function copyPublicLink() {
-    const origin = window.location.origin;
-    const url = `${origin}/p/${docId}`;
-    await navigator.clipboard.writeText(url);
-    toast("Public link copied!");
+    const url = `${window.location.origin}/p/${docId}`;
+    const copied = await copyText(url);
+    toast(copied ? "Public link copied!" : `Couldn’t copy. Link: ${url}`);
   }
 
   async function handleDuplicate() {
@@ -162,6 +183,16 @@ export default function DocPage() {
   }
 
   // ─────────────────────────────── render ──────────────────────────────────
+  if (loadState === "denied") {
+    return (
+      <div className="mx-auto max-w-md p-10 text-center">
+        <h1 className="mb-2 text-lg font-semibold text-fg">You can’t open this document</h1>
+        <p className="mb-4 text-sm text-muted">It’s private, in the Trash, or no longer exists.</p>
+        <Link href="/docs" className="text-sm underline">Back to Docs</Link>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[1100px] p-6">
       {/* Header */}
@@ -171,7 +202,9 @@ export default function DocPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled"
-            className="min-w-[200px] rounded-md border border-zinc-200 bg-transparent px-2.5 py-1.5 text-base font-semibold outline-none ring-0 focus:border-zinc-300 dark:border-zinc-700"
+            readOnly={!isOwner}
+            title={isOwner ? undefined : "Only the owner can rename this document"}
+            className="min-w-[200px] rounded-md border border-zinc-200 bg-transparent px-2.5 py-1.5 text-base font-semibold outline-none ring-0 focus:border-zinc-300 read-only:cursor-default read-only:border-transparent dark:border-zinc-700"
           />
           <div className="text-xs text-zinc-500">
             {saveState === "saving" && "Saving…"}
@@ -188,18 +221,22 @@ export default function DocPage() {
             Duplicate
           </button>
 
-          <button
-            onClick={handleMoveToTrash}
-            className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            Move to Trash
-          </button>
+          {isOwner && (
+            <>
+              <button
+                onClick={handleMoveToTrash}
+                className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:bg-red-900/20"
+              >
+                Move to Trash
+              </button>
 
-          <VisibilityPicker
-            value={visibility}
-            onChange={handleChangeVisibility}
-            disabled={!!savingMeta}
-          />
+              <VisibilityPicker
+                value={visibility}
+                onChange={handleChangeVisibility}
+                disabled={!!savingMeta}
+              />
+            </>
+          )}
 
           <div className="ml-2 flex items-center gap-2">
             <span className="text-xs text-zinc-500">Share:</span>
@@ -213,12 +250,14 @@ export default function DocPage() {
             </button>
           </div>
 
-          <button
-            onClick={() => setShowRevs(true)}
-            className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            History
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setShowRevs(true)}
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              History
+            </button>
+          )}
         </div>
       </div>
 
@@ -228,7 +267,7 @@ export default function DocPage() {
       </div>
 
       {/* Selection bubble */}
-      {bubble.visible && (
+      {bubble.visible && canComment && !commentDraft && (
         <button
           onClick={addComment}
           className="fixed z-50 -translate-x-1/2 -translate-y-[120%] rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
@@ -245,6 +284,7 @@ export default function DocPage() {
             initialHTML={initialHTML}
             onChange={handleEditorChange}
             peers={peersList}
+            readOnly={!canEdit}
           />
         </div>
 
@@ -252,9 +292,9 @@ export default function DocPage() {
           comments={comments}
           highlightedIds={highlightedIds}
           toggleHighlight={toggleHighlight}
-          deleteComment={deleteComment}
-          resolveComment={resolveComment}
-          onAddComment={addComment}
+          deleteComment={isOwner ? deleteComment : undefined}
+          resolveComment={isOwner ? resolveComment : undefined}
+          onAddComment={canComment ? addComment : undefined}
           showResolved={showResolved}
           onToggleShowResolved={() => setShowResolved((s) => !s)}
           collapsed={!commentsOpen}
@@ -274,6 +314,14 @@ export default function DocPage() {
           setShowRevs(false);
         }}
       />
+
+      {commentDraft && (
+        <CommentDialog
+          anchorText={commentDraft.anchorText}
+          onSubmit={submitComment}
+          onCancel={cancelComment}
+        />
+      )}
 
       <ToastContainer />
     </div>

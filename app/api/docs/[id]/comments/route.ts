@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { sanitizePlainText } from "@/lib/sanitize";
+import { denied, getCurrentUser, getDocAccess } from "@/lib/permissions";
 
 // shared helpers
 async function readJsonSafe(req: Request) {
@@ -10,9 +11,9 @@ async function readJsonSafe(req: Request) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
+// The author is never read from the request: it comes from the session.
 const CommentCreate = z.object({
   content: z.string().trim().min(1).max(4000),
-  author: z.string().trim().min(1).max(120),
   rangeFrom: z.number().int().nonnegative(),
   rangeTo: z.number().int().nonnegative(),
   anchorText: z.string().trim().max(2000).optional().default(""),
@@ -28,6 +29,10 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
+  const user = await getCurrentUser();
+  const access = await getDocAccess(id, user?.id ?? null);
+  if (!access.canRead) return denied(access, user?.id ?? null);
+
   const list = await prisma.comment.findMany({
     where: { documentId: id },
     orderBy: { createdAt: "desc" },
@@ -40,6 +45,9 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
+  const user = await getCurrentUser();
+  const access = await getDocAccess(id, user?.id ?? null);
+  if (!user || !access.canComment) return denied(access, user?.id ?? null);
 
   const raw = await readJsonSafe(req);
   const parsed = CommentCreate.safeParse(raw);
@@ -54,7 +62,7 @@ export async function POST(
 
   // sanitize user-controlled strings
   const cleanContent = sanitizePlainText(v.content);
-  const cleanAuthor = sanitizePlainText(v.author);
+  const cleanAuthor = sanitizePlainText(user.name).slice(0, 120);
   const cleanAnchor = sanitizePlainText(v.anchorText ?? "");
   const cleanBefore = sanitizePlainText(v.contextBefore ?? "");
   const cleanAfter = sanitizePlainText(v.contextAfter ?? "");

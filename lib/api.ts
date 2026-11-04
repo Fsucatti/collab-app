@@ -3,8 +3,22 @@ import type { CommentItem } from "@/lib/types";
 export async function getDoc(id: string) {
   const res = await fetch(`/api/docs/${id}`);
   if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GET /api/docs/${id} failed: ${res.status}`);
   const text = await res.text();
   return text ? JSON.parse(text) : null;
+}
+
+/** Asks the app for a realtime token bound to this document. Null means no access. */
+export async function getRealtimeToken(docId: string, intent: "edit" | "view"): Promise<string | null> {
+  const res = await fetch("/api/realtime/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ docId, intent }),
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const { token } = await res.json();
+  return token ?? null;
 }
 export async function putDoc(id: string, title = id, content = "<p></p>") {
   return fetch(`/api/docs/${id}`, {

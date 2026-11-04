@@ -1,12 +1,17 @@
 // app/api/docs/[id]/revisions/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { denied, getCurrentUser, getDocAccess } from "@/lib/permissions";
 
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const { id } = await ctx.params;
+  const user = await getCurrentUser();
+  const access = await getDocAccess(id, user?.id ?? null);
+  if (!access.canEdit) return denied(access, user?.id ?? null);
+
   const url = new URL(req.url);
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 20), 50);
   const cursor = url.searchParams.get("cursor") || undefined;

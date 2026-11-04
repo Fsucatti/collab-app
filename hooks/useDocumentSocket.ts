@@ -5,7 +5,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import type { PeerCursor, CommentItem } from "@/lib/types";
 import { toast } from "@/components/Toast";
-import { getIdentity } from "@/lib/identity";
 import {
   getDoc,
   putDoc,
@@ -15,10 +14,30 @@ import {
   deleteCommentApi,
   patchComment,
   restoreRevision,
+  getRealtimeToken,
 } from "@/lib/api";
+
+export type DocMeta = {
+  title: string;
+  visibility: "private" | "team" | "public";
+  isOwner: boolean;
+  canEdit: boolean;
+  canComment: boolean;
+};
+
+export type CommentDraft = {
+  from: number;
+  to: number;
+  anchorText: string;
+  contextBefore: string;
+  contextAfter: string;
+};
 
 export function useDocumentSocket(docId: string) {
   // ─────────────────────────── state ───────────────────────────
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "denied">("loading");
+  const [docMeta, setDocMeta] = useState<DocMeta | null>(null);
+  const [commentDraft, setCommentDraft] = useState<CommentDraft | null>(null);
   const [initialHTML, setInitialHTML] = useState("<p></p>");
   const [online, setOnline] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -35,13 +54,9 @@ export function useDocumentSocket(docId: string) {
   // ─────────────────────────── refs ────────────────────────────
   const socketRef = useRef<Socket | null>(null);
   const didInitSocket = useRef(false);
-  const identity = getIdentity();
-  const userId = useRef(identity.userId);
-  const displayName = useRef(identity.name);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const lastKnownHTML = useRef<string>("");
   const docIdRef = useRef(docId);
-  const lastUserSelectionAt = useRef<number>(0);
   const readyToJoinRef = useRef(false);
 
   // patch throttle
@@ -72,6 +87,10 @@ export function useDocumentSocket(docId: string) {
     bridge.setCommentHighlights(items); // [] clears
   }, [comments, highlightedIds]);
 
+  // Lets the socket call the latest version without reconnecting when comments change.
+  const pushHighlightsRef = useRef(pushHighlightsToEditor);
+  useEffect(() => { pushHighlightsRef.current = pushHighlightsToEditor; }, [pushHighlightsToEditor]);
+
   // ───────────────────── load doc (ONE effect), then allow join ────────────────
   useEffect(() => {
     if (!docId) return;
@@ -79,22 +98,39 @@ export function useDocumentSocket(docId: string) {
     let cancelled = false;
     (async () => {
       // 1) load/create doc
-      const doc = await getDoc(docId);
+      let doc: any = null;
+      try {
+        doc = await getDoc(docId);
+      } catch {
+        if (!cancelled) setLoadState("denied");
+        return;
+      }
+      if (cancelled) return;
+
       if (!doc) {
         const put = await putDoc(docId, docId, "<p></p>");
-        if (!put.ok) return;
+        if (cancelled) return;
+        if (!put.ok) { setLoadState("denied"); return; }
         setInitialHTML("<p></p>");
         lastKnownHTML.current = "<p></p>";
+        setDocMeta({ title: docId, visibility: "private", isOwner: true, canEdit: true, canComment: true });
       } else {
         const html = String(doc.content || "<p></p>");
         setInitialHTML(html);
         lastKnownHTML.current = html;
 
         latestHtmlRef.current = html;
-      lastSentHTMLRef.current = html;
+        lastSentHTMLRef.current = html;
+        setDocMeta({
+          title: doc.title ?? "",
+          visibility: doc.visibility ?? "private",
+          isOwner: !!doc.permissions?.isOwner,
+          canEdit: !!doc.permissions?.canEdit,
+          canComment: !!doc.permissions?.canComment,
+        });
       }
 
-      if (cancelled) return;
+      setLoadState("ready");
 
       // 2) mark as ready to join
       readyToJoinRef.current = true;
@@ -157,34 +193,18 @@ export function useDocumentSocket(docId: string) {
     let cancelled = false;
 
     (async () => {
-      let auth: Record<string, any> | undefined;
-      try {
-        // try editor token first
-        const r = await fetch("/api/realtime/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ docId: docIdRef.current, intent: "edit" }),
-          cache: "no-store",
-        });
-        if (r.ok) {
-          const { token } = await r.json();
-          auth = { token };
-        } else {
-          // fallback viewer token
-          const rv = await fetch("/api/realtime/token", { cache: "no-store" });
-          if (rv.ok) {
-            const { token } = await rv.json();
-            auth = { token };
-          }
-        }
-      } catch { /* anonymous viewer */ }
-
       if (cancelled) return;
 
       const socket = io(REALTIME_URL, {
         transports: ["websocket"],
-        auth,
-        query: { userId: userId.current, name: displayName.current }, // labels only
+        // Requested on every connection, so reconnecting never reuses an expired token.
+        auth: (cb) => {
+          const id = docIdRef.current;
+          getRealtimeToken(id, "edit")
+            .then((token) => token ?? getRealtimeToken(id, "view"))
+            .then((token) => cb(token ? { token } : {}))
+            .catch(() => cb({}));
+        },
       });
       socketRef.current = socket;
 
@@ -215,7 +235,7 @@ export function useDocumentSocket(docId: string) {
         const bridge = (window as any).__activeTiptapEditor;
         bridge?.applyRemoteHTML?.(html);
         lastKnownHTML.current = html;
-        pushHighlightsToEditor();
+        pushHighlightsRef.current();
       };
       const onPresence = (users: string[]) => setOnline(users);
       const onCommentNew = (comment: CommentItem) => {
@@ -263,7 +283,7 @@ export function useDocumentSocket(docId: string) {
       delete (window as any).__emitCursor;
       didInitSocket.current = false;
     };
-  }, [pushHighlightsToEditor, REALTIME_URL]);
+  }, [REALTIME_URL]);
 
   // ───────────────────── when docId changes, (re)join if ready ─────────────
   useEffect(() => {
@@ -313,7 +333,6 @@ export function useDocumentSocket(docId: string) {
   useEffect(() => {
     (window as any).__onEditorSelection = ({ from, to }: { from: number; to: number }) => {
       if (from === to) { setBubble((b) => ({ ...b, visible: false })); return; }
-      lastUserSelectionAt.current = Date.now();
       const sel = window.getSelection?.();
       if (!sel || sel.rangeCount === 0) { setBubble((b) => ({ ...b, visible: false })); return; }
       const rect = sel.getRangeAt(0).getBoundingClientRect();
@@ -329,6 +348,11 @@ export function useDocumentSocket(docId: string) {
     saveTimer.current = setTimeout(async () => {
       try {
         const res = await patchDoc(docId, html);
+        if (res.status === 401 || res.status === 403) {
+          setSaveState("error");
+          toast("You can't edit this document anymore.");
+          return;
+        }
         if (!res.ok) throw new Error("save failed");
         setSaveState("saved");
         setTimeout(() => setSaveState("idle"), 800);
@@ -367,40 +391,49 @@ export function useDocumentSocket(docId: string) {
   }, [emitPatchNow]);
 
   // ───────────────────── comments: add / delete / resolve ─────────────────
-  const addComment = useCallback(async () => {
+  // Clicking a button blurs the editor, but its selection stays valid, so that is
+  // what we read. The range is captured here because the dialog takes the focus.
+  const addComment = useCallback(() => {
     const bridge = (window as any).__activeTiptapEditor;
     const sel = bridge?.getSelection?.() ?? { from: 0, to: 0 };
     const anchorText: string = bridge?.getTextBetween?.(sel.from, sel.to) ?? "";
-    const before: string = bridge?.getTextBetween?.(Math.max(0, sel.from - 60), sel.from) ?? "";
-    const after: string = bridge?.getTextBetween?.(sel.to, sel.to + 60) ?? "";
 
-    const isFocused = !!bridge?.isFocused?.();
-    const recentMs = Date.now() - lastUserSelectionAt.current;
+    if (sel.from >= sel.to || anchorText.trim().length === 0) {
+      toast("Select text to comment on.");
+      return;
+    }
 
-    const selectionLooksFresh =
-      sel.from < sel.to && anchorText.trim().length > 0 && (isFocused || recentMs < 3000);
+    const docSize: number = bridge?.getDocSize?.() ?? sel.to;
+    setBubble((b) => ({ ...b, visible: false }));
+    setCommentDraft({
+      from: sel.from,
+      to: sel.to,
+      anchorText: anchorText.slice(0, 2000),
+      contextBefore: (bridge?.getTextBetween?.(Math.max(0, sel.from - 60), sel.from) ?? "").slice(-200),
+      contextAfter: (bridge?.getTextBetween?.(sel.to, Math.min(docSize, sel.to + 60)) ?? "").slice(0, 200),
+    });
+  }, []);
 
-    if (!selectionLooksFresh) { toast("Select text to comment on."); return; }
+  const cancelComment = useCallback(() => setCommentDraft(null), []);
 
-    const content = prompt("New comment?");
-    if (!content) return;
-
+  const submitComment = useCallback(async (content: string) => {
+    if (!commentDraft) return;
     try {
       const item = await apiPostComment(docId, {
         content,
-        author: displayName.current,
-        rangeFrom: sel.from,
-        rangeTo: sel.to,
-        anchorText,
-        contextBefore: before,
-        contextAfter: after,
+        rangeFrom: commentDraft.from,
+        rangeTo: commentDraft.to,
+        anchorText: commentDraft.anchorText,
+        contextBefore: commentDraft.contextBefore,
+        contextAfter: commentDraft.contextAfter,
       });
       setComments(prev => [item, ...prev]);
       socketRef.current?.emit("comment:new", { docId, comment: item });
+      setCommentDraft(null);
     } catch {
       toast("Couldn’t add comment.");
     }
-  }, [docId]);
+  }, [docId, commentDraft]);
 
   const jumpTo = useCallback((dir: "next" | "prev") => {
     const bridge = (window as any).__activeTiptapEditor;
@@ -465,9 +498,14 @@ export function useDocumentSocket(docId: string) {
 
   async function deleteComment(id: string) {
     if (!docId) return;
+    const previous = comments;
     setComments((prev) => prev.filter((c) => c.id !== id));
-    const res = await deleteCommentApi(docId, id);
-    if (!res.ok) return;
+    const res = await deleteCommentApi(docId, id).catch(() => null);
+    if (!res?.ok) {
+      setComments(previous);
+      toast("Couldn’t delete comment.");
+      return;
+    }
     socketRef.current?.emit("comment:delete", { id });
   }
 
@@ -486,6 +524,7 @@ export function useDocumentSocket(docId: string) {
       });
     } catch {
       setComments(prev => prev.map(c => c.id === id ? { ...c, resolved: !resolved } : c));
+      toast("Couldn’t update comment.");
     }
   }
 
@@ -521,6 +560,11 @@ export function useDocumentSocket(docId: string) {
   }, []);
 
   return {
+    loadState,
+    docMeta,
+    commentDraft,
+    submitComment,
+    cancelComment,
     initialHTML,
     peers,
     comments,

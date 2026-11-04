@@ -48,6 +48,11 @@ export default function RichEditor({ initialHTML, onChange, readOnly, peers = []
     },
   });
 
+  // Permissions arrive after the editor is created, so this has to stay in sync.
+  useEffect(() => {
+    if (editor) editor.setEditable(!readOnly, false);
+  }, [editor, readOnly]);
+
   useEffect(() => {
     if (!editor) return;
     const next = JSON.stringify(peers);
@@ -100,6 +105,7 @@ export default function RichEditor({ initialHTML, onChange, readOnly, peers = []
         if (!editor) return "";
         return editor.state.doc.textBetween(from, to, " ");
       },
+      getDocSize: () => editor?.state.doc.content.size ?? 0,
       revealRange: (from: number, to: number) => {
         if (!editor) return;
         editor.chain().focus().setTextSelection({ from, to }).scrollIntoView().run();
@@ -206,7 +212,7 @@ export default function RichEditor({ initialHTML, onChange, readOnly, peers = []
 
   return (
     <div className="rounded-lg border border-border bg-card">
-      <EditorToolbar editor={editor} />
+      {!readOnly && <EditorToolbar editor={editor} />}
       <div className="p-3 min-h-[420px]">
         <EditorContent
           editor={editor}

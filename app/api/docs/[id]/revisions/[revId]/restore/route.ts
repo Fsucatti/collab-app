@@ -2,12 +2,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sanitizeDocHTML } from "@/lib/sanitize";
+import { denied, getCurrentUser, getDocAccess } from "@/lib/permissions";
 
 export async function POST(
   _req: Request,
   ctx: { params: Promise<{ id: string; revId: string }> }
 ) {
   const { id, revId } = await ctx.params;
+  const user = await getCurrentUser();
+  const access = await getDocAccess(id, user?.id ?? null);
+  if (!access.canEdit) return denied(access, user?.id ?? null);
 
   const rev = await prisma.revision.findUnique({
     where: { id: revId },

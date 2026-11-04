@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sanitizeDocHTML } from "@/lib/sanitize";
 import { DocIdParam, UpsertDocBody, PatchDocBody } from "@/lib/validation";
-import { Visibility } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { accessFor } from "@/lib/permissions";
 
 // ─────────────────────────────────────────────────────────
 // limits
@@ -63,13 +63,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   if (!doc || doc.deletedAt) return noCache({ error: "Not found" }, 404);
 
-  // Public docs are readable by anyone
-  if (doc.visibility === Visibility.public) return noCache(doc);
+  const access = accessFor(doc, userId);
+  if (!access.canRead) return noCache({ error: "Forbidden" }, 403);
 
-  // Otherwise must be the owner
-  if (!userId || doc.ownerId !== userId) return noCache({ error: "Forbidden" }, 403);
-
-  return noCache(doc);
+  // The client uses these flags to show only the actions the API will accept.
+  const { ownerId: _ownerId, ...rest } = doc;
+  return noCache({
+    ...rest,
+    permissions: {
+      isOwner: access.isOwner,
+      canEdit: access.canEdit,
+      canComment: access.canComment,
+    },
+  });
 }
 
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -153,7 +159,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (doc.deletedAt) return NextResponse.json({ error: "Document is deleted" }, { status: 409 });
-  if (doc.ownerId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!accessFor(doc, userId).canEdit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   // bounds: pre-sanitize
   const incoming = parsedBody.data.content ?? "";

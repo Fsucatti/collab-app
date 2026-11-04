@@ -450,3 +450,19 @@ Granular sharing (link with passcode, expiring links).
 Server-side novel diff/OT/CRDT (currently “last write wins” with throttle).
 
 Unit tests (API + editor glue), e2e smoke tests (Playwright).
+## Permissions
+
+All document rules live in `lib/permissions.ts`. API routes check them on the server, and `GET /api/docs/:id` returns the flags the UI uses to hide actions.
+
+| Action | Owner | Signed-in user | Anonymous |
+|---|---|---|---|
+| Read a public document | Yes | Yes | Yes |
+| Read a private or team document | Yes | No | No |
+| Edit a public document, see or restore its history | Yes | Yes | No |
+| Comment on a document they can read | Yes | Yes | No |
+| Rename, change visibility, move to Trash, manage Trash | Yes | No | No |
+| Resolve or delete comments | Yes | No | No |
+
+The realtime server only accepts tokens issued by `POST /api/realtime/token`. Each token is bound to one document, and viewer tokens can watch but not send anything. Deploy the app before the realtime server, because the server rejects older clients that connect without a token.
+
+Building locally requires Node 22: `next build` fails on Node 26 with a webpack hashing error.

@@ -39,8 +39,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Ownership rule: if ownerId is null (pre-auth docs), let the first editor “claim” it.
-  if (doc.ownerId && doc.ownerId !== userId) {
+  if (doc.deletedAt) return NextResponse.json({ error: "Document is deleted" }, { status: 409 });
+  // Title and visibility belong to the owner, even on public documents.
+  if (doc.ownerId !== userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -50,7 +51,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: parsedBody.error.flatten() }, { status: 400 });
   }
 
-  const data: { title?: string; visibility?: Visibility; ownerId?: string | null } = {};
+  const data: { title?: string; visibility?: Visibility } = {};
   if (typeof parsedBody.data.title === "string") {
     data.title = sanitizePlainText(parsedBody.data.title);
   }
@@ -60,11 +61,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     data.visibility = vis;
   }
 
-  // Claim or preserve owner
-  if (!doc.ownerId) data.ownerId = userId;
-  
-  
-  
   const updated = await prisma.document.update({
     where: { id },
     data,

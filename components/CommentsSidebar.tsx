@@ -6,7 +6,7 @@ type Props = {
   comments: CommentItem[];
   highlightedIds: Set<string>;
   toggleHighlight: (id: string) => void;
-  deleteComment: (id: string) => void;
+  deleteComment?: (id: string) => void;
   onAddComment?: () => void;
 
   resolveComment?: (id: string, resolved: boolean) => void;
@@ -157,13 +157,15 @@ export default function CommentsSidebar({
                     </button>
                   )}
 
-                  <button
-                    onClick={() => deleteComment(c.id)}
-                    className="h-7 rounded-md border border-border px-2 text-xs
-                               text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                  >
-                    Delete
-                  </button>
+                  {typeof deleteComment === "function" && (
+                    <button
+                      onClick={() => deleteComment(c.id)}
+                      className="h-7 rounded-md border border-border px-2 text-xs
+                                 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
