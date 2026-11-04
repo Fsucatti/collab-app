@@ -42,8 +42,8 @@ export default function CommentsSidebar({
   // Compact rail
   if (minified) {
     return (
-      <aside className="border-l border-border pl-0">
-        <div className="sticky top-4 h-[calc(100vh-32px)] w-9 flex items-center justify-center">
+      <aside className="border-t border-border md:border-l md:border-t-0">
+        <div className="flex items-center justify-center py-2 md:sticky md:top-4 md:h-[calc(100vh-32px)] md:w-9">
           <button
             aria-label="Open comments"
             onClick={onToggleMinified}
@@ -60,8 +60,8 @@ export default function CommentsSidebar({
 
   // Expanded
   return (
-    <aside className="border-l border-border pl-3">
-      <div className="sticky top-4 max-h-[calc(100vh-32px)] flex flex-col gap-2">
+    <aside className="border-t border-border pt-3 md:border-l md:border-t-0 md:pl-3 md:pt-0">
+      <div className="flex flex-col gap-2 md:sticky md:top-4 md:max-h-[calc(100vh-32px)]">
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
           <div className="font-semibold text-fg">Comments</div>

@@ -151,17 +151,9 @@ export default function DocPage() {
     try {
       const src = await getDoc(docId);
       const baseTitle = `Copy of ${src?.title ?? "Untitled"}`;
-      const visSrc = String(src?.visibility ?? "private").toLowerCase();
-      const visForPost: "private" | "workspace" | "public" =
-        visSrc === "team" ? "workspace" :
-        visSrc === "workspace" ? "workspace" :
-        visSrc === "public" ? "public" : "private";
 
-      const clone = await createDoc(
-        baseTitle,
-        String(src?.content ?? "<p></p>"),
-        visForPost
-      );
+      // Copies start private, even when the original is public.
+      const clone = await createDoc(baseTitle, String(src?.content ?? "<p></p>"), "private");
 
       toast("Duplicated");
       router.push(`/docs/${clone.id}`);
@@ -194,17 +186,17 @@ export default function DocPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1100px] p-6">
+    <div className="mx-auto max-w-[1100px] p-1 sm:p-6">
       {/* Header */}
-      <div className="mb-3 grid grid-cols-[1fr_auto] items-center gap-3">
-        <div className="flex items-baseline gap-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-baseline gap-3">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled"
             readOnly={!isOwner}
             title={isOwner ? undefined : "Only the owner can rename this document"}
-            className="min-w-[200px] rounded-md border border-zinc-200 bg-transparent px-2.5 py-1.5 text-base font-semibold outline-none ring-0 focus:border-zinc-300 read-only:cursor-default read-only:border-transparent dark:border-zinc-700"
+            className="w-full min-w-0 sm:min-w-[200px] rounded-md border border-zinc-200 bg-transparent px-2.5 py-1.5 text-base font-semibold outline-none ring-0 focus:border-zinc-300 read-only:cursor-default read-only:border-transparent dark:border-zinc-700"
           />
           <div className="text-xs text-zinc-500">
             {saveState === "saving" && "Saving…"}
@@ -213,7 +205,7 @@ export default function DocPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleDuplicate}
             className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
@@ -278,7 +270,7 @@ export default function DocPage() {
       )}
 
       {/* Editor + Comments */}
-      <div className={`grid gap-4 ${sidebarMinified ? "grid-cols-[1fr_36px]" : "grid-cols-[1fr_280px]"}`}>
+      <div className={`grid grid-cols-1 gap-4 ${sidebarMinified ? "md:grid-cols-[1fr_36px]" : "md:grid-cols-[1fr_280px]"}`}>
         <div>
           <RichEditor
             initialHTML={initialHTML}

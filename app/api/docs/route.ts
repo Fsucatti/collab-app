@@ -7,6 +7,13 @@ import { Prisma, Visibility } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+/** The database stores private, team, or public. The UI also calls team "workspace". */
+function parseVisibility(value?: string | null): Visibility | undefined {
+  const name = value?.toLowerCase();
+  if (name === "workspace") return Visibility.team;
+  return (Object.values(Visibility) as string[]).includes(name ?? "") ? (name as Visibility) : undefined;
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id ?? null;
@@ -17,11 +24,7 @@ export async function GET(req: Request) {
   const q  = url.searchParams.get("q")?.trim() || "";
 
   // parse & validate visibility filter from query
-  const visParamStr = url.searchParams.get("visibility")?.toUpperCase();
-  const visParam: Visibility | undefined =
-    visParamStr && (Object.values(Visibility) as string[]).includes(visParamStr)
-      ? (visParamStr as Visibility)
-      : undefined;
+  const visParam = parseVisibility(url.searchParams.get("visibility"));
 
   // base (not deleted)
   const baseWhere: Prisma.DocumentWhereInput = { deletedAt: null };
@@ -83,12 +86,7 @@ export async function POST(req: Request) {
   const title = parsed.data.title ? sanitizePlainText(parsed.data.title) : "Untitled";
   const content = sanitizeDocHTML(parsed.data.content ?? "<p></p>");
 
-  // normalize to enum
-  const visStr = parsed.data.visibility?.toUpperCase();
-  const visibility: Visibility =
-    visStr && (Object.values(Visibility) as string[]).includes(visStr)
-      ? (visStr as Visibility)
-      : Visibility.private;
+  const visibility = parseVisibility(parsed.data.visibility) ?? Visibility.private;
 
   const created = await prisma.document.create({
   data: {

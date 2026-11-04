@@ -30,7 +30,7 @@ export default function EditorToolbar({ editor }: { editor: CoreEditor | null })
   );
 
   return (
-    <div className="flex items-center gap-1 border-b border-border bg-card/60 px-2 py-2">
+    <div className="flex flex-wrap items-center gap-1 whitespace-nowrap border-b border-border bg-card/60 px-2 py-2">
       <Btn
         onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
