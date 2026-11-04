@@ -1,0 +1,19 @@
+{
+  "name": "collab-realtime",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 3001",
+    "check": "tsc --noEmit",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "sanitize-html": "^2.18.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "@types/sanitize-html": "^2.16.2",
+    "typescript": "^5.9.3",
+    "wrangler": "4.157"
+  }
+}

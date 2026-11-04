@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { io, Socket } from "socket.io-client";
+import { connectRealtime, type RealtimeConnection } from "@/lib/realtime";
 import type { PeerCursor, CommentItem } from "@/lib/types";
 import { toast } from "@/components/Toast";
 import {
@@ -52,7 +52,7 @@ export function useDocumentSocket(docId: string) {
   });
 
   // ─────────────────────────── refs ────────────────────────────
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<RealtimeConnection | null>(null);
   const didInitSocket = useRef(false);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const lastKnownHTML = useRef<string>("");
@@ -190,30 +190,15 @@ export function useDocumentSocket(docId: string) {
     if (didInitSocket.current) return;
     didInitSocket.current = true;
 
-    let cancelled = false;
-
-    (async () => {
-      if (cancelled) return;
-
-      const socket = io(REALTIME_URL, {
-        transports: ["websocket"],
-        // Requested on every connection, so reconnecting never reuses an expired token.
-        auth: (cb) => {
-          const id = docIdRef.current;
-          getRealtimeToken(id, "edit")
-            .then((token) => token ?? getRealtimeToken(id, "view"))
-            .then((token) => cb(token ? { token } : {}))
-            .catch(() => cb({}));
-        },
+    {
+      const socket = connectRealtime(REALTIME_URL, docIdRef.current, async () => {
+        const id = docIdRef.current;
+        return (await getRealtimeToken(id, "edit")) ?? (await getRealtimeToken(id, "view"));
       });
       socketRef.current = socket;
 
       // connect/reconnect → join only when ready
       socket.on("connect", () => {
-        const id = docIdRef.current;
-        if (id && readyToJoinRef.current) socket.emit("join", id);
-      });
-      socket.io.on("reconnect", () => {
         const id = docIdRef.current;
         if (id && readyToJoinRef.current) socket.emit("join", id);
       });
@@ -264,22 +249,11 @@ export function useDocumentSocket(docId: string) {
       (window as any).__emitCursor = (from: number, to: number) => {
         socket.emit("cursor", { from, to });
       };
-    })();
+    }
 
     return () => {
-      cancelled = true;
-      const socket = socketRef.current;
-      if (socket) {
-        socket.off("cursor");
-        socket.off("doc:init");
-        socket.off("doc:update");
-        socket.off("presence");
-        socket.off("comment:new");
-        socket.off("comment:delete");
-        socket.off("comment:resolve");
-        socket.disconnect();
-        socketRef.current = null;
-      }
+      socketRef.current?.disconnect();
+      socketRef.current = null;
       delete (window as any).__emitCursor;
       didInitSocket.current = false;
     };
