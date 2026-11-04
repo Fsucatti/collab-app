@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import AuthButtons from "./AuthButtons";
+import { CatIcon, PORTFOLIO_URL } from "./ProjectFooter";
 
 const links = [
   { href: "/docs", label: "Docs" },
@@ -74,6 +75,15 @@ export default function Navbar() {
 
         {/* Right actions */}
         <div className="ml-auto flex items-center gap-2">
+          <a
+            href={PORTFOLIO_URL}
+            aria-label="Back to portfolio"
+            title="Back to portfolio"
+            className="inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted transition-colors hover:bg-[hsl(var(--color-brand-50))] hover:text-fg"
+          >
+            <CatIcon className="h-5 w-5" />
+            <span className="hidden lg:inline">Back to portfolio</span>
+          </a>
           <ThemeToggle />
           <AuthButtons />
         </div>

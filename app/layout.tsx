@@ -4,6 +4,7 @@ import Script from "next/script";
 import Providers from "./providers";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import ProjectFooter from "@/components/ProjectFooter";
 
 export const metadata: Metadata = {
   title: "Collab Notes",
@@ -36,10 +37,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {setInitialTheme}
         </Script>
       </head>
-      <body className="bg-app text-fg min-h-screen">
+      <body className="bg-app text-fg flex min-h-screen flex-col">
         <Providers>
           <Navbar />
-          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
+          <ProjectFooter />
         </Providers>
       </body>
     </html>
