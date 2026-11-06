@@ -6,9 +6,15 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import ProjectFooter from "@/components/ProjectFooter";
 
+const description = "A collaborative document editor with real-time editing, comments, and revision history.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL("https://collab-app-fsucatti.vercel.app"),
   title: "Collab Notes",
-  description: "A collaborative document editor with real-time editing, comments, and revision history.",
+  description,
+  // Preview shown when the link is shared in chats and social networks.
+  openGraph: { type: "website", title: "Collab Notes", description, images: [{ url: "/og.jpg", width: 800, height: 420 }] },
+  twitter: { card: "summary_large_image" },
 };
 
 const setInitialTheme = `
